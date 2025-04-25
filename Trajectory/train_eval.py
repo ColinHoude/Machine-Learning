@@ -50,7 +50,7 @@ parser.add_argument('--dataset_dimension', type=int, default=5)
 parser.add_argument('--num_k', type=int, default=10)
 parser.add_argument('--ped_num_k', type=int, default=50)
 parser.add_argument('--just_x_y', type=bool, default=True)
-parser.add_argument('--minADEloss', type=bool, default=False)
+parser.add_argument('--minADEloss', type=bool, default=True)
 
 
 
@@ -99,18 +99,31 @@ class MinADE_loss(nn.Module):
     :param traj_gt: ground truth trajectory, shape [batch_size, sequence_length, 2]
     :return err:  average minADE over batch members
     """
-    num_modes = traj.shape[1] #num_k
-    traj_gt_rpt = traj_gt.unsqueeze(1).repeat(1, num_modes, 1, 1) # repeat ground truth to have the shape [batch_size, num_modes, sequence_length, 2]
-    traj_ = traj.reshape(traj_gt_rpt.shape) # reshape predicted trajectories to have the shape [batch_size, num_modes, sequence_length, 2]
-
-    err = traj_gt_rpt - traj_ # find the difference between ground truth and predicted trajectories
+    # num_modes = traj.shape[1] #num_k
+    # traj_gt_rpt = traj_gt.unsqueeze(1).repeat(1, num_modes, 1, 1) # repeat ground truth to have the shape [batch_size, num_modes, sequence_length, 2]
+    # traj_ = traj.reshape(traj_gt_rpt.shape) # reshape predicted trajectories to have the shape [batch_size, num_modes, sequence_length, 2]
+    #
+    # err = traj_gt_rpt - traj_ # find the difference between ground truth and predicted trajectories
 
     # complete this part: calculate the average displacement error between ground truth and each predicted trajectory for each element of batch,
     # find the minimum average displacement error over proposed trajectories for each element of the batch
     # average it over batch members and return it as loss value
 
+    # 1) ReshapeD
+    B, K, _ = traj.shape
+    T = traj_gt.shape[1]
+    traj_gt_rpt = traj_gt.unsqueeze(1).repeat(1, K, 1, 1)  # [B, K, T, 2]
+    traj_reshaped = traj.view(B, K, T, 2)  # [B, K, T, 2]
 
-    return err
+    # 2) compute Eucl distance per time step, then mean / time
+    dist = torch.norm(traj_gt_rpt - traj_reshaped, p=2, dim=-1)  # [B, K, T]
+    ade_per_mode = dist.mean(dim=-1)  # [B, K]
+
+    # 3) each sample, pick the minimum over modes, then mean / batch
+    min_ade_per_sample, _ = ade_per_mode.min(dim=1)  # [B]
+    loss = min_ade_per_sample.mean()  # scalar
+
+    return loss
 
 def get_cls_label(gt, motion_modes, soft_label=True):
 
